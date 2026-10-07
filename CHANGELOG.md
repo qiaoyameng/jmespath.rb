@@ -1,6 +1,10 @@
 Unreleased Changes
 ------------------
 
+* Feature - Add `group_by()` function that groups array elements by a key
+  expression, preserving first-appearance group order and supporting
+  arbitrary JSON values as keys.
+
 1.6.2 (2022-11-25)
 ------------------
 

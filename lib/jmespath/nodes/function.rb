@@ -649,5 +649,133 @@ module JMESPath
         value.respond_to?(:to_ary) ? value.to_ary : [value]
       end
     end
+
+    # @api private
+    #
+    # Helpers used by group_by() to give common JSON values a consistent
+    # hash identity and to verify candidate groups on digest collisions.
+    module GroupByKey
+      module_function
+
+      # Returns a structural digest suitable as a Ruby Hash key. Numbers
+      # are canonicalized so that 1 and 1.0 share an identity, object
+      # member order is normalized away, and array order is preserved.
+      def digest(value, index, stack = [])
+        if value.nil?
+          :null
+        elsif value == true || value == false
+          [:boolean, value]
+        elsif value.is_a?(Numeric)
+          [:number, numeric_identity(value)]
+        elsif value.respond_to?(:to_str)
+          [:string, value.to_str]
+        elsif value.respond_to?(:to_hash)
+          hash = value.to_hash
+          guard_cycle!(hash, index, stack)
+          begin
+            members = hash.map do |member_key, member_value|
+              [member_name(member_key), digest(member_value, index, stack)]
+            end
+          ensure
+            stack.pop
+          end
+          [:object, members.sort_by(&:first)]
+        elsif value.respond_to?(:to_ary)
+          array = value.to_ary
+          guard_cycle!(array, index, stack)
+          begin
+            elements = array.map { |element| digest(element, index, stack) }
+          ensure
+            stack.pop
+          end
+          [:array, elements]
+        else
+          raise Errors::InvalidValueError,
+                "function group_by() cannot group by the key at index #{index}: #{value.class} is not a valid JSON value"
+        end
+      end
+
+      # Deep equality following JMESPath value semantics: object member
+      # order is insignificant, numbers compare by value (1 == 1.0),
+      # booleans are distinct from numbers, and array order matters.
+      def value_equal?(left, right)
+        if left.is_a?(Numeric) || right.is_a?(Numeric)
+          left.is_a?(Numeric) && right.is_a?(Numeric) && left == right
+        elsif left.respond_to?(:to_hash) && right.respond_to?(:to_hash)
+          left_hash = left.to_hash
+          right_hash = right.to_hash
+          return false unless left_hash.size == right_hash.size
+          left_hash.all? do |key, value|
+            match = right_hash.find { |k, _| member_name(k) == member_name(key) }
+            !match.nil? && value_equal?(value, match[1])
+          end
+        elsif left.respond_to?(:to_ary) && right.respond_to?(:to_ary)
+          left_array = left.to_ary
+          right_array = right.to_ary
+          left_array.size == right_array.size &&
+            left_array.each_with_index.all? { |v, i| value_equal?(v, right_array[i]) }
+        elsif left.respond_to?(:to_str) && right.respond_to?(:to_str)
+          left.to_str == right.to_str
+        else
+          left == right
+        end
+      end
+
+      def numeric_identity(value)
+        return value if value.is_a?(Integer)
+        integer = value.to_i
+        integer == value ? integer : value.to_f
+      rescue StandardError
+        value
+      end
+
+      def member_name(key)
+        key.respond_to?(:to_str) ? key.to_str : key.to_s
+      end
+
+      def guard_cycle!(container, index, stack)
+        if stack.any? { |seen| seen.equal?(container) }
+          raise Errors::InvalidValueError,
+                "function group_by() cannot group by the cyclic key at index #{index}"
+        end
+        stack.push(container)
+      end
+    end
+
+    class GroupByFunction < Function
+      include TypeChecker
+
+      FUNCTIONS['group_by'] = self
+
+      def call(args)
+        if args.count != 2
+          return maybe_raise Errors::InvalidArityError, 'function group_by() expects two arguments'
+        end
+        if get_type(args[0]) != ARRAY_TYPE || get_type(args[1]) != EXPRESSION_TYPE
+          return maybe_raise Errors::InvalidTypeError, 'function group_by() expects an array and an expression'
+        end
+        expression = args[1]
+        buckets = {}
+        groups = []
+        args[0].to_ary.each_with_index do |item, index|
+          key = expression.eval(item)
+          digest = begin
+            GroupByKey.digest(key, index)
+          rescue Errors::InvalidValueError => error
+            return maybe_raise Errors::InvalidValueError, error.message
+          end
+          entries = (buckets[digest] ||= [])
+          entry = entries.find { |candidate| GroupByKey.value_equal?(candidate[0], key) }
+          if entry
+            entry[1] << item
+          else
+            entry = [key, [item]]
+            entries << entry
+            groups << entry
+          end
+        end
+        groups.map { |key, items| { 'key' => key, 'items' => items } }
+      end
+    end
   end
 end
