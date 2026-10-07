@@ -17,10 +17,16 @@ module JMESPath
       Lexer::T_CURRENT           => 0,
       Lexer::T_EXPREF            => 0,
       Lexer::T_COLON             => 0,
+      Lexer::T_UPLUS             => 0,
       Lexer::T_PIPE              => 1,
       Lexer::T_OR                => 2,
       Lexer::T_AND               => 3,
       Lexer::T_COMPARATOR        => 5,
+      Lexer::T_PLUS              => 7,
+      Lexer::T_MINUS             => 7,
+      Lexer::T_MULTIPLY          => 8,
+      Lexer::T_DIVIDE            => 8,
+      Lexer::T_MODULO            => 8,
       Lexer::T_FLATTEN           => 9,
       Lexer::T_STAR              => 20,
       Lexer::T_FILTER            => 21,
@@ -30,6 +36,8 @@ module JMESPath
       Lexer::T_LBRACKET          => 55,
       Lexer::T_LPAREN            => 60
     }.freeze
+
+    UNARY_BINDING_POWER = 39
 
     # @param [Symbol] type
     # @param [Mixed] value

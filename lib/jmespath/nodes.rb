@@ -17,6 +17,7 @@ module JMESPath
 
     require  'jmespath/nodes/subexpression'
     require  'jmespath/nodes/and'
+    require  'jmespath/nodes/arithmetic'
     require  'jmespath/nodes/comparator'
     require  'jmespath/nodes/comparator'
     require  'jmespath/nodes/condition'

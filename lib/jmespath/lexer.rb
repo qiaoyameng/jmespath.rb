@@ -30,6 +30,13 @@ module JMESPath
     T_LITERAL = :literal
     T_EOF = :eof
     T_COMPARATOR = :comparator
+    T_PLUS = :plus
+    T_MINUS = :minus
+    T_NEGATE = :negate
+    T_UPLUS = :uplus
+    T_MULTIPLY = :multiply
+    T_DIVIDE = :divide
+    T_MODULO = :modulo
 
     STATE_IDENTIFIER = 0
     STATE_NUMBER = 1
@@ -45,6 +52,11 @@ module JMESPath
     STATE_EQ = 11
     STATE_NOT = 12
     STATE_AND = 13
+    STATE_MINUS = 14
+    STATE_PLUS = 15
+    STATE_STAR = 16
+    STATE_DIVIDE = 17
+    STATE_MODULO = 18
 
     TRANSLATION_TABLE = {
       '<'  => STATE_LT,
@@ -137,6 +149,14 @@ module JMESPath
       'z'  => STATE_IDENTIFIER
     }.freeze
 
+    ARITHMETIC_TRANSLATION_TABLE = TRANSLATION_TABLE.merge(
+      '-'  => STATE_MINUS,
+      '+'  => STATE_PLUS,
+      '*'  => STATE_STAR,
+      '/'  => STATE_DIVIDE,
+      '%'  => STATE_MODULO
+    ).freeze
+
     VALID_IDENTIFIERS = Set.new(%w(
                                   A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
                                   a b c d e f g h i j k l m n o p q r s t u v w x y z
@@ -158,14 +178,49 @@ module JMESPath
       '}' => T_RBRACE
     }.freeze
 
+    UNARY_PREFIX_TOKENS = [
+      nil,
+      T_PIPE,
+      T_OR,
+      T_AND,
+      T_NOT,
+      T_COMPARATOR,
+      T_PLUS,
+      T_MINUS,
+      T_NEGATE,
+      T_UPLUS,
+      T_MULTIPLY,
+      T_DIVIDE,
+      T_MODULO,
+      T_LPAREN,
+      T_LBRACE,
+      T_LBRACKET,
+      T_FILTER,
+      T_FLATTEN,
+      T_COMMA,
+      T_DOT
+    ].freeze
+
+    def initialize(options = {})
+      @arithmetic = options.fetch(:arithmetic) do
+        options[:enable_arithmetic] || options[:arithmetic_extensions]
+      end
+    end
+
     # @param [String<JMESPath>] expression
     # @return [Array<Hash>]
     def tokenize(expression)
       tokens = []
       chars = CharacterStream.new(expression.chars.to_a)
 
+      last_token = nil
       while chars.current
-        case TRANSLATION_TABLE[chars.current]
+        state = if @arithmetic
+                  ARITHMETIC_TRANSLATION_TABLE[chars.current]
+                else
+                  TRANSLATION_TABLE[chars.current]
+                end
+        case state
         when nil
           tokens << Token.new(
             T_UNKNOWN,
@@ -237,6 +292,33 @@ module JMESPath
             buffer.join.to_i,
             start
           )
+        when STATE_MINUS
+          token = arithmetic_sign_token(chars, T_MINUS, last_token)
+          tokens << token
+          last_token = token
+        when STATE_PLUS
+          token = arithmetic_sign_token(chars, T_PLUS, last_token)
+          tokens << token
+          last_token = token
+        when STATE_STAR
+          position = chars.position
+          chars.next
+          type = UNARY_PREFIX_TOKENS.include?(last_token&.type) ? T_STAR : T_MULTIPLY
+          token = Token.new(type, '*', position)
+          tokens << token
+          last_token = token
+        when STATE_DIVIDE
+          position = chars.position
+          chars.next
+          token = Token.new(T_DIVIDE, '/', position)
+          tokens << token
+          last_token = token
+        when STATE_MODULO
+          position = chars.position
+          chars.next
+          token = Token.new(T_MODULO, '%', position)
+          tokens << token
+          last_token = token
         when STATE_QUOTED_STRING
           # consume quoted identifiers
           token = inside(chars, '"', T_QUOTED_IDENTIFIER)
@@ -258,12 +340,28 @@ module JMESPath
           # consume less than and greater than
           tokens << match_or(chars, chars.current, '=', T_COMPARATOR, T_COMPARATOR)
         end
+        last_token = tokens.last
       end
       tokens << Token.new(T_EOF, nil, chars.position)
       tokens
     end
 
     private
+
+    def arithmetic_sign_token(chars, binary_type, last_token)
+      position = chars.position
+      value = chars.current
+      unary = UNARY_PREFIX_TOKENS.include?(last_token&.type)
+      next_char = chars.next
+      while next_char == ' ' || next_char == "\t" || next_char == "\n" || next_char == "\r"
+        next_char = chars.next
+      end
+      if value == '-' && last_token&.type == T_COLON && next_char && NUMBERS.include?(next_char)
+        unary = true
+      end
+      unary_type = value == '-' ? T_NEGATE : T_UPLUS
+      Token.new(unary ? unary_type : binary_type, value, position)
+    end
 
     def match_or(chars, current, expected, type, or_type)
       if chars.next == expected

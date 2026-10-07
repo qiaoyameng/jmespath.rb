@@ -40,10 +40,16 @@ module JMESPath
     #   will still be raised, but unexpected data sent to visit will
     #   result in nil being returned.
     #
+    # @option options [Boolean] :arithmetic (false) When `true`, enables
+    #   `+`, unary `+`, unary `-`, `-`, `*`, `/`, and `%` expressions.
+    #
+    # @option options [Numeric] :number_budget Rejects finite arithmetic
+    #   operands and results whose absolute value exceeds this number.
+    #
     # @option options [Parser,CachingParser] :parser
     #
     def initialize(options = {})
-      @parser = options[:parser] || default_parser(options)
+      @parser = options[:parser] || default_parser(normalized_options(options))
     end
 
     # @return [Parser, CachingParser]
@@ -58,6 +64,16 @@ module JMESPath
     end
 
     private
+
+    def normalized_options(options)
+      arithmetic = options.fetch(:arithmetic) do
+        options[:enable_arithmetic] || options[:arithmetic_extensions]
+      end
+      number_budget = options.fetch(:number_budget) do
+        options[:numeric_budget] || options[:max_number]
+      end
+      options.merge(arithmetic: arithmetic, number_budget: number_budget)
+    end
 
     def default_parser(options)
       if options[:cache_expressions] == false

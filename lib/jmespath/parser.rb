@@ -14,10 +14,12 @@ module JMESPath
                         ])
 
     NUM_COLON_RBRACKET = Set.new([
-                                   Lexer::T_NUMBER,
-                                   Lexer::T_COLON,
-                                   Lexer::T_RBRACKET
-                                 ])
+                                 Lexer::T_NUMBER,
+                                 Lexer::T_NEGATE,
+                                 Lexer::T_UPLUS,
+                                 Lexer::T_COLON,
+                                 Lexer::T_RBRACKET
+                               ])
 
     COLON_RBRACKET = Set.new([
                                Lexer::T_COLON,
@@ -28,8 +30,15 @@ module JMESPath
 
     # @option options [Lexer] :lexer
     def initialize(options = {})
-      @lexer = options[:lexer] || Lexer.new
+      @arithmetic = options.fetch(:arithmetic) do
+        options[:enable_arithmetic] || options[:arithmetic_extensions]
+      end
+      @number_budget = options.fetch(:number_budget) do
+        options[:numeric_budget] || options[:max_number]
+      end
+      @lexer = options[:lexer] || Lexer.new(arithmetic: @arithmetic)
       @disable_visit_errors = options[:disable_visit_errors]
+      validate_options
     end
 
     # @param [String<JMESPath>] expression
@@ -80,6 +89,34 @@ module JMESPath
       Nodes::Not.new(expr(stream, Token::BINDING_POWER[:not]))
     end
 
+    def nud_number(stream)
+      return method_missing(:nud_number) unless @arithmetic
+
+      token = stream.token
+      stream.next
+      Nodes::Literal.new(token.value)
+    end
+
+    def nud_negate(stream)
+      return method_missing(:nud_negate) unless @arithmetic
+
+      stream.next
+      Nodes::UnaryArithmetic.new(:minus, unary_operand(stream), arithmetic_options)
+    end
+
+    def nud_plus(stream)
+      return method_missing(:nud_plus) unless @arithmetic
+
+      stream.next
+      Nodes::UnaryArithmetic.new(:plus, unary_operand(stream), arithmetic_options)
+    end
+
+    def nud_uplus(stream)
+      return method_missing(:nud_uplus) unless @arithmetic
+
+      nud_plus(stream)
+    end
+
     def nud_lparen(stream)
       stream.next
       result = expr(stream, 0)
@@ -123,7 +160,7 @@ module JMESPath
     def nud_lbracket(stream)
       stream.next
       type = stream.token.type
-      if type == :number || type == :colon
+      if type == :number || type == :negate || type == :uplus || type == :colon
         parse_array_index_expression(stream)
       elsif type == :star && stream.lookahead(1).type == :rbracket
         parse_wildcard_array(stream)
@@ -195,9 +232,9 @@ module JMESPath
     end
 
     def led_lbracket(stream, left)
-      stream.next(match: Set.new([:number, :colon, :star]))
+      stream.next(match: Set.new([:number, :negate, :uplus, :colon, :star]))
       type = stream.token.type
-      if type == :number || type == :colon
+      if type == :number || type == :negate || type == :uplus || type == :colon
         right = parse_array_index_expression(stream)
         Nodes::Subexpression.new(left, right)
       else
@@ -233,6 +270,46 @@ module JMESPath
       Nodes::And.new(left, right)
     end
 
+    def led_plus(stream, left)
+      return method_missing(:led_plus, left) unless @arithmetic
+
+      stream.next
+      right = expr(stream, Token::BINDING_POWER[:plus])
+      Nodes::Arithmetic.new(:plus, left, right, arithmetic_options)
+    end
+
+    def led_minus(stream, left)
+      return method_missing(:led_minus, left) unless @arithmetic
+
+      stream.next
+      right = expr(stream, Token::BINDING_POWER[:minus])
+      Nodes::Arithmetic.new(:minus, left, right, arithmetic_options)
+    end
+
+    def led_multiply(stream, left)
+      return method_missing(:led_multiply, left) unless @arithmetic
+
+      stream.next
+      right = expr(stream, Token::BINDING_POWER[:multiply])
+      Nodes::Arithmetic.new(:multiply, left, right, arithmetic_options)
+    end
+
+    def led_divide(stream, left)
+      return method_missing(:led_divide, left) unless @arithmetic
+
+      stream.next
+      right = expr(stream, Token::BINDING_POWER[:divide])
+      Nodes::Arithmetic.new(:divide, left, right, arithmetic_options)
+    end
+
+    def led_modulo(stream, left)
+      return method_missing(:led_modulo, left) unless @arithmetic
+
+      stream.next
+      right = expr(stream, Token::BINDING_POWER[:modulo])
+      Nodes::Arithmetic.new(:modulo, left, right, arithmetic_options)
+    end
+
     def led_pipe(stream, left)
       stream.next
       right = expr(stream, Token::BINDING_POWER[:pipe])
@@ -252,6 +329,9 @@ module JMESPath
         elsif stream.token.type == Lexer::T_NUMBER
           parts[pos] = stream.token.value
           expected = COLON_RBRACKET
+        elsif stream.token.type == Lexer::T_NEGATE || stream.token.type == Lexer::T_UPLUS
+          parts[pos] = parse_signed_number(stream)
+          expected = COLON_RBRACKET
         end
         stream.next(match: expected)
       end while stream.token.type != Lexer::T_RBRACKET
@@ -269,6 +349,13 @@ module JMESPath
           parse_projection(stream, Token::BINDING_POWER[Lexer::T_STAR])
         )
       end
+    end
+
+    def parse_signed_number(stream)
+      negative = stream.token.type == Lexer::T_NEGATE
+      stream.next(match: Set.new([Lexer::T_NUMBER]))
+      value = stream.token.value
+      value * (negative ? -1 : 1)
     end
 
     def parse_dot(stream, binding_power)
@@ -329,6 +416,31 @@ module JMESPath
       left ||= CURRENT_NODE
       right = parse_projection(stream, Token::BINDING_POWER[:star])
       Nodes::ObjectProjection.new(left, right)
+    end
+
+    def unary_operand(stream)
+      expr(stream, Token::UNARY_BINDING_POWER)
+    end
+
+    def arithmetic_options
+      {
+        disable_visit_errors: @disable_visit_errors,
+        number_budget: @number_budget
+      }
+    end
+
+    def validate_options
+      return if @number_budget.nil?
+
+      finite = if @number_budget.respond_to?(:nan?)
+                 !@number_budget.nan? && @number_budget.infinite?.nil?
+               else
+                 true
+               end
+
+      unless @number_budget.is_a?(Numeric) && finite && @number_budget > 0
+        raise ArgumentError, 'number_budget must be a positive finite number'
+      end
     end
   end
 end

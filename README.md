@@ -43,6 +43,17 @@ JMESPath.search('foo.bar', { abc: "mno" })
 
 **[See the JMESPath specification for a full list of supported search expressions.](http://jmespath.org/specification.html)**
 
+## Arithmetic Extension
+
+Arithmetic is opt-in and is disabled in standard JMESPath expressions. Pass `arithmetic: true` to enable unary positive and negative signs plus `+`, `-`, `*`, `/`, and `%`.
+
+```ruby
+JMESPath.search('unit_price * quantity', { unit_price: 12, quantity: 3 }, arithmetic: true)
+#=> 36
+```
+
+Operands must be JSON numbers; booleans, strings, and `null` are not converted to numbers. Integer `+`, `-`, `*`, and `%` retain integer results, while `/` always uses floating-point division. Division or modulo by zero raises `JMESPath::Errors::DivisionByZeroError`, non-finite results raise `JMESPath::Errors::NonFiniteResultError`, and results outside `number_budget` raise `JMESPath::Errors::NumberBudgetExceededError`. These arithmetic safety errors remain active when `disable_visit_errors: true`.
+
 ## Indifferent Access
 
 The examples above show JMESPath expressions used to search over hashes with symbolized keys. You can use search also for hashes with string keys or Struct objects.
