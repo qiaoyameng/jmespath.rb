@@ -19,8 +19,8 @@ module JMESPath
         end
       end
 
-      def visit(value)
-        call(@children.map { |child| child.visit(value) })
+      def visit(value, bindings = nil)
+        call(@children.map { |child| child.visit(value, bindings) })
       end
 
       def optimize

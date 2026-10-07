@@ -100,7 +100,11 @@ module JMESPath
 
     def nud_identifier(stream)
       token = stream.token
-      n = stream.next
+      next_token = stream.next
+      if token.value == 'let' && next_token.type == Lexer::T_VARIABLE
+        return parse_let(stream, token, next_token)
+      end
+      n = next_token
       if n.type == :lparen
         Nodes::Function::FunctionName.new(token.value)
       else
@@ -155,6 +159,16 @@ module JMESPath
 
     def nud_unknown(stream)
       raise Errors::SyntaxError, "unknown token #{stream.token.value.inspect}"
+    end
+
+    def nud_variable(stream)
+      token = stream.token
+      stream.next
+      unless stream.bound?(token.value)
+        raise Errors::UnboundVariableError.new(token.value, token.position)
+      end
+
+      Nodes::Variable.new(token.value, token.position)
     end
 
     def led_comparator(stream, left)
@@ -237,6 +251,30 @@ module JMESPath
       stream.next
       right = expr(stream, Token::BINDING_POWER[:pipe])
       Nodes::Pipe.new(left, right)
+    end
+
+    def parse_let(stream, let_token, variable_token)
+      stream.next(match: Set.new([Lexer::T_ASSIGN]))
+      stream.push_scope
+      begin
+        stream.next
+        if stream.token.type == Lexer::T_IDENTIFIER && stream.token.value == 'in'
+          raise Errors::SyntaxError, "expected expression after `let` at position #{let_token.position}"
+        end
+
+        value = expr(stream, 0)
+        unless stream.token.type == Lexer::T_IDENTIFIER && stream.token.value == 'in'
+          raise Errors::SyntaxError, "expected `in` at position #{stream.token.position}"
+        end
+
+        stream.next
+        stream.bind(variable_token.value, variable_token.position)
+        body = expr(stream, 0)
+      ensure
+        stream.pop_scope
+      end
+
+      Nodes::Let.new(variable_token.value, value, body)
     end
 
     # parse array index expressions, for example [0], [1:2:3], etc.

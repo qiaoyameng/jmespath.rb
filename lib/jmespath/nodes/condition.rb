@@ -8,11 +8,11 @@ module JMESPath
         @child = child
       end
 
-      def visit(value)
-        if JMESPath::Util.falsey?(@test.visit(value))
+      def visit(value, bindings = nil)
+        if JMESPath::Util.falsey?(@test.visit(value, bindings))
           nil
         else
-          @child.visit(value)
+          @child.visit(value, bindings)
         end
       end
 
@@ -36,7 +36,7 @@ module JMESPath
         @child = child
       end
 
-      def visit(_value)
+      def visit(_value, _bindings = nil)
         nil
       end
 
@@ -52,8 +52,8 @@ module JMESPath
     class EqCondition < ComparatorCondition
       COMPARATOR_TO_CONDITION[Comparators::Eq] = self
 
-      def visit(value)
-        Util.as_json(@left.visit(value)) == Util.as_json(@right.visit(value)) ? @child.visit(value) : nil
+      def visit(value, bindings = nil)
+        Util.as_json(@left.visit(value, bindings)) == Util.as_json(@right.visit(value, bindings)) ? @child.visit(value, bindings) : nil
       end
 
       def optimize
@@ -71,16 +71,16 @@ module JMESPath
         @right = @right.value
       end
 
-      def visit(value)
-        Util.as_json(@left.visit(value)) == @right ? @child.visit(value) : nil
+      def visit(value, bindings = nil)
+        Util.as_json(@left.visit(value, bindings)) == @right ? @child.visit(value, bindings) : nil
       end
     end
 
     class NeqCondition < ComparatorCondition
       COMPARATOR_TO_CONDITION[Comparators::Neq] = self
 
-      def visit(value)
-        Util.as_json(@left.visit(value)) != Util.as_json(@right.visit(value)) ? @child.visit(value) : nil
+      def visit(value, bindings = nil)
+        Util.as_json(@left.visit(value, bindings)) != Util.as_json(@right.visit(value, bindings)) ? @child.visit(value, bindings) : nil
       end
 
       def optimize
@@ -98,48 +98,48 @@ module JMESPath
         @right = @right.value
       end
 
-      def visit(value)
-        Util.as_json(@left.visit(value)) != @right ? @child.visit(value) : nil
+      def visit(value, bindings = nil)
+        Util.as_json(@left.visit(value, bindings)) != @right ? @child.visit(value, bindings) : nil
       end
     end
 
     class GtCondition < ComparatorCondition
       COMPARATOR_TO_CONDITION[Comparators::Gt] = self
 
-      def visit(value)
-        left_value = @left.visit(value)
-        right_value = @right.visit(value)
-        comparable?(left_value, right_value) && left_value > right_value ? @child.visit(value) : nil
+      def visit(value, bindings = nil)
+        left_value = @left.visit(value, bindings)
+        right_value = @right.visit(value, bindings)
+        comparable?(left_value, right_value) && left_value > right_value ? @child.visit(value, bindings) : nil
       end
     end
 
     class GteCondition < ComparatorCondition
       COMPARATOR_TO_CONDITION[Comparators::Gte] = self
 
-      def visit(value)
-        left_value = @left.visit(value)
-        right_value = @right.visit(value)
-        comparable?(left_value, right_value) && left_value >= right_value ? @child.visit(value) : nil
+      def visit(value, bindings = nil)
+        left_value = @left.visit(value, bindings)
+        right_value = @right.visit(value, bindings)
+        comparable?(left_value, right_value) && left_value >= right_value ? @child.visit(value, bindings) : nil
       end
     end
 
     class LtCondition < ComparatorCondition
       COMPARATOR_TO_CONDITION[Comparators::Lt] = self
 
-      def visit(value)
-        left_value = @left.visit(value)
-        right_value = @right.visit(value)
-        comparable?(left_value, right_value) && left_value < right_value ? @child.visit(value) : nil
+      def visit(value, bindings = nil)
+        left_value = @left.visit(value, bindings)
+        right_value = @right.visit(value, bindings)
+        comparable?(left_value, right_value) && left_value < right_value ? @child.visit(value, bindings) : nil
       end
     end
 
     class LteCondition < ComparatorCondition
       COMPARATOR_TO_CONDITION[Comparators::Lte] = self
 
-      def visit(value)
-        left_value = @left.visit(value)
-        right_value = @right.visit(value)
-        comparable?(left_value, right_value) && left_value <= right_value ? @child.visit(value) : nil
+      def visit(value, bindings = nil)
+        left_value = @left.visit(value, bindings)
+        right_value = @right.visit(value, bindings)
+        comparable?(left_value, right_value) && left_value <= right_value ? @child.visit(value, bindings) : nil
       end
     end
   end

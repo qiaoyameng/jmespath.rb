@@ -9,6 +9,7 @@ module JMESPath
       @tokens = tokens
       @token = nil
       @position = -1
+      @scopes = []
       self.next
     end
 
@@ -29,6 +30,27 @@ module JMESPath
 
     def lookahead(count)
       @tokens[@position + count] || Token::NULL_TOKEN
+    end
+
+    def push_scope
+      @scopes.push({})
+    end
+
+    def pop_scope
+      @scopes.pop
+    end
+
+    def bind(name, position)
+      scope = @scopes.last
+      if scope.nil? || scope.key?(name)
+        raise Errors::SyntaxError, "duplicate binding `#{name}` at position #{position}"
+      end
+
+      scope[name] = true
+    end
+
+    def bound?(name)
+      @scopes.any? { |scope| scope.key?(name) }
     end
 
     # @api private

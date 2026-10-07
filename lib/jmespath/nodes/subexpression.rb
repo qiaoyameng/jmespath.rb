@@ -8,8 +8,8 @@ module JMESPath
         @right = right
       end
 
-      def visit(value)
-        @right.visit(@left.visit(value))
+      def visit(value, bindings = nil)
+        @right.visit(@left.visit(value, bindings), bindings)
       end
 
       def optimize
@@ -40,9 +40,9 @@ module JMESPath
         @children = children
       end
 
-      def visit(value)
+      def visit(value, bindings = nil)
         @children.reduce(value) do |v, child|
-          child.visit(v)
+          child.visit(v, bindings)
         end
       end
 

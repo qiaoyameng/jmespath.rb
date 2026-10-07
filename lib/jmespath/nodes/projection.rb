@@ -8,11 +8,11 @@ module JMESPath
         @projection = projection
       end
 
-      def visit(value)
-        if (targets = extract_targets(@target.visit(value)))
+      def visit(value, bindings = nil)
+        if (targets = extract_targets(@target.visit(value, bindings)))
           list = []
           targets.each do |v|
-            vv = @projection.visit(v)
+            vv = @projection.visit(v, bindings)
             list << vv unless vv.nil?
           end
           list
@@ -35,9 +35,9 @@ module JMESPath
     end
 
     module FastProjector
-      def visit(value)
-        if (targets = extract_targets(@target.visit(value)))
-          targets.compact
+        def visit(value, bindings = nil)
+          if (targets = extract_targets(@target.visit(value, bindings)))
+            targets.compact
         end
       end
     end

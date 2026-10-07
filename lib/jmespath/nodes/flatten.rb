@@ -7,8 +7,8 @@ module JMESPath
         @child = child
       end
 
-      def visit(value)
-        value = @child.visit(value)
+      def visit(value, bindings = nil)
+        value = @child.visit(value, bindings)
         if value.respond_to?(:to_ary)
           value.to_ary.each_with_object([]) do |v, values|
             if v.respond_to?(:to_ary)

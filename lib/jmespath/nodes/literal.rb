@@ -9,7 +9,7 @@ module JMESPath
         @value = value
       end
 
-      def visit(_value)
+      def visit(_value, _bindings = nil)
         @value
       end
     end

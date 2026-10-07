@@ -7,12 +7,12 @@ module JMESPath
         @right = right
       end
 
-      def visit(value)
-        result = @left.visit(value)
+      def visit(value, bindings = nil)
+        result = @left.visit(value, bindings)
         if JMESPath::Util.falsey?(result)
           result
         else
-          @right.visit(value)
+          @right.visit(value, bindings)
         end
       end
 
