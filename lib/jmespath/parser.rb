@@ -15,6 +15,7 @@ module JMESPath
 
     NUM_COLON_RBRACKET = Set.new([
                                    Lexer::T_NUMBER,
+                                   Lexer::T_MINUS,
                                    Lexer::T_COLON,
                                    Lexer::T_RBRACKET
                                  ])
@@ -30,6 +31,7 @@ module JMESPath
     def initialize(options = {})
       @lexer = options[:lexer] || Lexer.new
       @disable_visit_errors = options[:disable_visit_errors]
+      @max_number = options[:max_number]
     end
 
     # @param [String<JMESPath>] expression
@@ -123,7 +125,7 @@ module JMESPath
     def nud_lbracket(stream)
       stream.next
       type = stream.token.type
-      if type == :number || type == :colon
+      if type == :number || type == :colon || type == :minus
         parse_array_index_expression(stream)
       elsif type == :star && stream.lookahead(1).type == :rbracket
         parse_wildcard_array(stream)
@@ -195,9 +197,9 @@ module JMESPath
     end
 
     def led_lbracket(stream, left)
-      stream.next(match: Set.new([:number, :colon, :star]))
+      stream.next(match: Set.new([:number, :colon, :star, :minus]))
       type = stream.token.type
-      if type == :number || type == :colon
+      if type == :number || type == :colon || type == :minus
         right = parse_array_index_expression(stream)
         Nodes::Subexpression.new(left, right)
       else
@@ -249,11 +251,17 @@ module JMESPath
         if stream.token.type == Lexer::T_COLON
           pos += 1
           expected = NUM_COLON_RBRACKET
-        elsif stream.token.type == Lexer::T_NUMBER
+          stream.next(match: expected)
+        elsif stream.token.type == Lexer::T_MINUS
+          stream.next(match: Set.new([Lexer::T_NUMBER]))
+          parts[pos] = -stream.token.value
+          expected = COLON_RBRACKET
+          stream.next(match: expected)
+        else
           parts[pos] = stream.token.value
           expected = COLON_RBRACKET
+          stream.next(match: expected)
         end
-        stream.next(match: expected)
       end while stream.token.type != Lexer::T_RBRACKET
 
       stream.next # consume the closing bracket

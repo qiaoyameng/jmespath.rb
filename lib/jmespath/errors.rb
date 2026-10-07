@@ -15,5 +15,11 @@ module JMESPath
     class InvalidArityError < Error; end
 
     class UnknownFunctionError < Error; end
+
+    class DivisionByZeroError < Error; end
+
+    class NonFiniteNumberError < Error; end
+
+    class NumberBudgetExceededError < Error; end
   end
 end

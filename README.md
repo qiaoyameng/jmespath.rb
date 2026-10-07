@@ -43,6 +43,39 @@ JMESPath.search('foo.bar', { abc: "mno" })
 
 **[See the JMESPath specification for a full list of supported search expressions.](http://jmespath.org/specification.html)**
 
+## Arithmetic Extension
+
+An opt-in arithmetic extension adds unary `+`/`-` and the binary `+`,
+`-`, `*`, `/` and `%` operators. Pass `use_arithmetic: true` to enable
+it:
+
+```ruby
+JMESPath.search('price * quantity',
+                { "price" => 3, "quantity" => 4 },
+                use_arithmetic: true)
+#=> 12
+```
+
+Operator precedence, from loosest to tightest, is pipe (`|`), logical
+or/and (`||`, `&&`), comparisons (`<`, `<=`, `==`, `!=`, `>=`, `>`),
+additive (`+`, `-`), multiplicative (`*`, `/`, `%`), unary (`+`, `-`)
+and finally subexpressions (`.` and `[]`). Parentheses group
+expressions.
+
+Only JSON numbers are valid operands; booleans, strings and `null` are
+never implicitly converted and raise
+`JMESPath::Errors::InvalidTypeError`. Integer operands keep Ruby's
+arbitrary integer precision; integer division returns an `Integer` only
+when the quotient is exact and a `Float` otherwise (true division, not
+floor division). `JMESPath::Errors::DivisionByZeroError` is raised for
+division or modulo by zero, and
+`JMESPath::Errors::NonFiniteNumberError` is raised when a result is not
+finite. Pass `:max_number` to bound result magnitudes; exceeding it
+raises `JMESPath::Errors::NumberBudgetExceededError`. These dedicated
+errors are always raised, even when `:disable_visit_errors` is `true`;
+that option only converts ordinary evaluation errors (such as
+non-numeric operands) into `nil`.
+
 ## Indifferent Access
 
 The examples above show JMESPath expressions used to search over hashes with symbolized keys. You can use search also for hashes with string keys or Struct objects.

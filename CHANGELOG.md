@@ -1,6 +1,16 @@
 Unreleased Changes
 ------------------
 
+* Feature - Add an opt-in arithmetic extension (`use_arithmetic: true`)
+  supporting unary `+`/`-` and binary `+`, `-`, `*`, `/`, `%` with
+  precedence defined against comparisons, logic and pipe operators.
+  Operands must be JSON numbers; integer division preserves integer
+  precision only for exact quotients and otherwise uses true
+  (floating-point) division. Adds dedicated
+  `DivisionByZeroError`, `NonFiniteNumberError` and
+  `NumberBudgetExceededError` (configurable via `:max_number`) that are
+  not suppressed by `:disable_visit_errors`.
+
 1.6.2 (2022-11-25)
 ------------------
 

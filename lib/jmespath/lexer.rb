@@ -30,6 +30,10 @@ module JMESPath
     T_LITERAL = :literal
     T_EOF = :eof
     T_COMPARATOR = :comparator
+    T_PLUS = :plus
+    T_MINUS = :minus
+    T_SLASH = :slash
+    T_PERCENT = :percent
 
     STATE_IDENTIFIER = 0
     STATE_NUMBER = 1
@@ -45,6 +49,10 @@ module JMESPath
     STATE_EQ = 11
     STATE_NOT = 12
     STATE_AND = 13
+    STATE_PLUS = 14
+    STATE_MINUS = 15
+    STATE_SLASH = 16
+    STATE_PERCENT = 17
 
     TRANSLATION_TABLE = {
       '<'  => STATE_LT,
@@ -54,10 +62,13 @@ module JMESPath
       '['  => STATE_LBRACKET,
       '|'  => STATE_PIPE,
       '&'  => STATE_AND,
+      '+'  => STATE_PLUS,
+      '-'  => STATE_MINUS,
+      '/'  => STATE_SLASH,
+      '%'  => STATE_PERCENT,
       '`'  => STATE_JSON_LITERAL,
       '"'  => STATE_QUOTED_STRING,
       "'"  => STATE_STRING_LITERAL,
-      '-'  => STATE_NUMBER,
       '0'  => STATE_NUMBER,
       '1'  => STATE_NUMBER,
       '2'  => STATE_NUMBER,
@@ -227,16 +238,25 @@ module JMESPath
           tokens << token
         when STATE_NUMBER
           start = chars.position
-          buffer = []
-          begin
-            buffer << chars.current
-            chars.next
-          end while NUMBERS.include?(chars.current)
-          tokens << Token.new(
-            T_NUMBER,
-            buffer.join.to_i,
-            start
-          )
+          buffer = consume_number(chars)
+          value = numeric_value(buffer)
+          if value.is_a?(Float) && !value.finite?
+            tokens << Token.new(T_UNKNOWN, buffer.join, start)
+          else
+            tokens << Token.new(T_NUMBER, value, start)
+          end
+        when STATE_PLUS
+          tokens << Token.new(T_PLUS, chars.current, chars.position)
+          chars.next
+        when STATE_MINUS
+          tokens << Token.new(T_MINUS, chars.current, chars.position)
+          chars.next
+        when STATE_SLASH
+          tokens << Token.new(T_SLASH, chars.current, chars.position)
+          chars.next
+        when STATE_PERCENT
+          tokens << Token.new(T_PERCENT, chars.current, chars.position)
+          chars.next
         when STATE_QUOTED_STRING
           # consume quoted identifiers
           token = inside(chars, '"', T_QUOTED_IDENTIFIER)
@@ -264,6 +284,49 @@ module JMESPath
     end
 
     private
+
+    # Consumes a JSON-style numeric literal: an integer part, optionally
+    # followed by a fraction and/or an exponent. The trailing dot of a
+    # field access such as `foo.1` is left for the caller to handle; only
+    # a dot followed by a digit starts the fraction part.
+    def consume_number(chars)
+      buffer = []
+      begin
+        buffer << chars.current
+        chars.next
+      end while NUMBERS.include?(chars.current)
+
+      if chars.current == '.' && NUMBERS.include?(chars.peek)
+        buffer << '.'
+        chars.next
+        begin
+          buffer << chars.current
+          chars.next
+        end while NUMBERS.include?(chars.current)
+      end
+
+      if chars.current == 'e' || chars.current == 'E'
+        sign = (chars.peek == '+' || chars.peek == '-') ? chars.peek : nil
+        digit = chars.peek(sign ? 2 : 1)
+        if NUMBERS.include?(digit)
+          buffer << 'e'
+          chars.next
+          buffer << sign if sign
+          chars.next if sign
+          begin
+            buffer << chars.current
+            chars.next
+          end while NUMBERS.include?(chars.current)
+        end
+      end
+
+      buffer
+    end
+
+    def numeric_value(buffer)
+      text = buffer.join
+      text.include?('.') || text.include?('e') || text.include?('E') ? text.to_f : text.to_i
+    end
 
     def match_or(chars, current, expected, type, or_type)
       if chars.next == expected
@@ -374,6 +437,10 @@ module JMESPath
       def next
         @position += 1
         @chars[@position]
+      end
+
+      def peek(offset = 1)
+        @chars[@position + offset]
       end
 
       attr_reader :position

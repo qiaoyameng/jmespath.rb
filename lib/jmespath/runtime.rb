@@ -42,6 +42,16 @@ module JMESPath
     #
     # @option options [Parser,CachingParser] :parser
     #
+    # @option options [Boolean] :use_arithmetic (false) When `true`, an
+    #   opt-in parser is used that enables unary `+`/`-` and the binary
+    #   `+`, `-`, `*`, `/` and `%` operators. See {ArithmeticParser} for
+    #   the operator precedence. Only JSON numbers are valid operands.
+    #
+    # @option options [Numeric] :max_number (nil) Only used together with
+    #   `:use_arithmetic`. When set, any arithmetic result whose absolute
+    #   value is greater than this limit raises
+    #   {Errors::NumberBudgetExceededError}.
+    #
     def initialize(options = {})
       @parser = options[:parser] || default_parser(options)
     end
@@ -61,10 +71,15 @@ module JMESPath
 
     def default_parser(options)
       if options[:cache_expressions] == false
-        Parser.new(options)
+        build_parser(options)
       else
-        DEFAULT_PARSER.new(options)
+        DEFAULT_PARSER.new(options.merge(parser: build_parser(options)))
       end
+    end
+
+    def build_parser(options)
+      parser_class = options[:use_arithmetic] ? ArithmeticParser : Parser
+      parser_class.new(options)
     end
   end
 end

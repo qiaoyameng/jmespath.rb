@@ -4,11 +4,12 @@ require 'stringio'
 require 'pathname'
 
 module JMESPath
-  require 'jmespath/caching_parser'
   require 'jmespath/errors'
   require 'jmespath/lexer'
   require 'jmespath/nodes'
   require 'jmespath/parser'
+  require 'jmespath/arithmetic_parser'
+  require 'jmespath/caching_parser'
   require 'jmespath/runtime'
   require 'jmespath/token'
   require 'jmespath/token_stream'
