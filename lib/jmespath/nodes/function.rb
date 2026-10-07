@@ -649,5 +649,139 @@ module JMESPath
         value.respond_to?(:to_ary) ? value.to_ary : [value]
       end
     end
+
+    class LeftJoinFunction < Function
+      FUNCTIONS['left_join'] = self
+
+      OPTION_NAMES = %w[match_null composite limit].freeze
+
+      def call(args)
+        unless args.count == 4 || args.count == 5
+          return maybe_raise Errors::InvalidArityError, 'function left_join() expects 4 or 5 arguments'
+        end
+        left_values = args[0]
+        left_expression = args[1]
+        right_values = args[2]
+        right_expression = args[3]
+        unless left_values.respond_to?(:to_ary) && right_values.respond_to?(:to_ary)
+          return maybe_raise Errors::InvalidTypeError, 'function left_join() expects the first and third arguments to be arrays'
+        end
+        unless Nodes::Expression === left_expression && Nodes::Expression === right_expression
+          return maybe_raise Errors::InvalidTypeError, 'function left_join() expects the second and fourth arguments to be expressions'
+        end
+        options = parse_options(args[4])
+        return unless options
+
+        left_values = left_values.to_ary
+        right_values = right_values.to_ary
+
+        # each key expression is evaluated exactly once per element
+        left_keys = left_values.map { |item| left_expression.eval(item) }
+        right_keys = right_values.map { |item| right_expression.eval(item) }
+
+        # the right table is indexed once; left items never trigger a rescan
+        index = {}
+        right_values.each_with_index do |item, n|
+          key = normalize_key(right_keys[n], options[:composite])
+          if key == :invalid
+            return maybe_raise Errors::InvalidTypeError, key_error_message(options[:composite])
+          end
+          next if !options[:match_null] && null_key?(key)
+          (index[key] ||= []) << item
+        end
+
+        joined = []
+        left_values.each_with_index do |item, n|
+          key = normalize_key(left_keys[n], options[:composite])
+          if key == :invalid
+            return maybe_raise Errors::InvalidTypeError, key_error_message(options[:composite])
+          end
+          matches = null_key?(key) && !options[:match_null] ? nil : index[key]
+          if matches
+            matches.each do |right_item|
+              joined << { 'left' => item, 'right' => right_item }
+            end
+          else
+            joined << { 'left' => item, 'right' => nil }
+          end
+          if options[:limit] && joined.size > options[:limit]
+            return maybe_raise Errors::InvalidValueError, "function left_join() exceeded the output limit of #{options[:limit]} records"
+          end
+        end
+        joined
+      end
+
+      private
+
+      def parse_options(options)
+        parsed = { match_null: false, composite: false, limit: nil }
+        return parsed if options.nil?
+        unless options.respond_to?(:to_hash)
+          return maybe_raise Errors::InvalidTypeError, 'function left_join() expects the fifth argument to be an object of options'
+        end
+        values = {}
+        options.to_hash.each_pair { |k, v| values[k.to_s] = v }
+        unknown = values.keys - OPTION_NAMES
+        unless unknown.empty?
+          return maybe_raise Errors::InvalidValueError, "function left_join() received unknown options: #{unknown.join(', ')}"
+        end
+        parsed[:match_null] = !!values['match_null']
+        parsed[:composite] = !!values['composite']
+        if values.key?('limit')
+          limit = values['limit']
+          unless limit.is_a?(Integer) || (limit.is_a?(Numeric) && limit.finite? && limit == limit.to_i)
+            return maybe_raise Errors::InvalidTypeError, 'function left_join() expects the limit option to be a non-negative integer'
+          end
+          limit = limit.to_i
+          if limit < 0
+            return maybe_raise Errors::InvalidTypeError, 'function left_join() expects the limit option to be a non-negative integer'
+          end
+          parsed[:limit] = limit
+        end
+        parsed
+      end
+
+      def normalize_key(value, composite)
+        if value.respond_to?(:to_ary)
+          return :invalid unless composite
+          components = value.to_ary.map { |component| normalize_scalar(component) }
+          components.any? { |component| component == :invalid } ? :invalid : [:tuple, components]
+        else
+          normalize_scalar(value)
+        end
+      end
+
+      def normalize_scalar(value)
+        if value.respond_to?(:to_str)
+          [:string, value.to_str]
+        elsif value == true || value == false
+          [:boolean, value]
+        elsif value.is_a?(Numeric)
+          [:number, normalize_number(value)]
+        elsif value.nil?
+          nil
+        else
+          :invalid
+        end
+      end
+
+      def normalize_number(value)
+        value.to_r
+      rescue StandardError
+        value
+      end
+
+      def null_key?(key)
+        key.nil? || (key[0] == :tuple && key[1].any?(&:nil?))
+      end
+
+      def key_error_message(composite)
+        if composite
+          'function left_join() expects keys to be arrays of scalar values (string, number, boolean or null)'
+        else
+          'function left_join() expects scalar keys (string, number, boolean or null); declare "composite": true to join on arrays of scalars'
+        end
+      end
+    end
   end
 end
