@@ -500,6 +500,140 @@ module JMESPath
       end
     end
 
+    class GroupByFunction < Function
+      FUNCTIONS['group_by'] = self
+
+      # Maps canonical key identities to groups using hash buckets, so
+      # that grouping is linear for common JSON keys instead of a
+      # pairwise comparison of every element. Keys that land in the
+      # same bucket are verified with `==` before being treated as
+      # equal (collision verification).
+      #
+      # @api private
+      class KeyTable
+        # Number of canonical key equality checks performed.
+        attr_reader :comparisons
+
+        def initialize
+          @buckets = {}
+          @comparisons = 0
+        end
+
+        # @return [Hash, nil] the group previously stored for an equal
+        #   canonical key, or nil when the key has not been seen.
+        def fetch(canonical)
+          if (bucket = @buckets[canonical.hash])
+            bucket.each do |stored, group|
+              @comparisons += 1
+              return group if stored == canonical
+            end
+          end
+          nil
+        end
+
+        def store(canonical, group)
+          (@buckets[canonical.hash] ||= []) << [canonical, group]
+        end
+      end
+
+      def call(args)
+        if args.count != 2
+          return maybe_raise Errors::InvalidArityError, 'function group_by() expects two arguments'
+        end
+        values, expression = args
+        unless values.respond_to?(:to_ary)
+          return maybe_raise Errors::InvalidTypeError, 'function group_by() expects an array as the first argument'
+        end
+        unless Nodes::Expression === expression
+          return maybe_raise Errors::InvalidTypeError, 'function group_by() expects an expression as the second argument'
+        end
+        table = KeyTable.new
+        groups = []
+        values.to_ary.each_with_index do |value, index|
+          key = expression.eval(value)
+          canonical = catch(:group_by_invalid_key) { canonical_key(key, index, {}) }
+          return nil if canonical.nil?
+          if (group = table.fetch(canonical))
+            group['items'] << value
+          else
+            group = { 'key' => key, 'items' => [value] }
+            table.store(canonical, group)
+            groups << group
+          end
+        end
+        groups
+      end
+
+      private
+
+      # Builds a canonical identity for a JSON key so that keys which
+      # are equal under JMESPath value semantics hash and compare
+      # equally: object member order is normalized away, numbers are
+      # reduced to rationals (1 and 1.0 group together, true does not),
+      # and array order is preserved. The original key is never
+      # modified.
+      def canonical_key(value, index, seen)
+        if value.nil?
+          [:null]
+        elsif value == true || value == false
+          [:boolean, value]
+        elsif value.is_a?(Numeric)
+          [:number, canonical_number(value, index)]
+        elsif value.respond_to?(:to_str)
+          [:string, value.to_str]
+        elsif value.respond_to?(:to_ary)
+          array = value.to_ary
+          canonical_container(array, index, seen) do
+            [:array, array.map { |element| canonical_key(element, index, seen) }]
+          end
+        elsif value.respond_to?(:to_hash)
+          hash = value.to_hash
+          canonical_container(hash, index, seen) do
+            pairs = hash.map do |k, v|
+              [canonical_member_key(k, index), canonical_key(v, index, seen)]
+            end
+            [:object, pairs.sort_by(&:first)]
+          end
+        else
+          maybe_raise Errors::InvalidTypeError, "function group_by() encountered a non-JSON key of type #{value.class} at index #{index}"
+          throw :group_by_invalid_key
+        end
+      end
+
+      def canonical_container(container, index, seen)
+        id = container.object_id
+        if seen[id]
+          maybe_raise Errors::InvalidValueError, "function group_by() encountered a cyclic key at index #{index}"
+          throw :group_by_invalid_key
+        end
+        seen[id] = true
+        begin
+          yield
+        ensure
+          seen.delete(id)
+        end
+      end
+
+      def canonical_number(value, index)
+        if value.is_a?(Complex) || (value.respond_to?(:finite?) && !value.finite?)
+          maybe_raise Errors::InvalidValueError, "function group_by() encountered a non-JSON number at index #{index}"
+          throw :group_by_invalid_key
+        end
+        value.to_r
+      end
+
+      def canonical_member_key(key, index)
+        if key.respond_to?(:to_str)
+          key.to_str
+        elsif key.is_a?(Symbol)
+          key.to_s
+        else
+          maybe_raise Errors::InvalidTypeError, "function group_by() encountered a non-string object key of type #{key.class} at index #{index}"
+          throw :group_by_invalid_key
+        end
+      end
+    end
+
     module CompareBy
       include TypeChecker
 
