@@ -7,11 +7,11 @@ module JMESPath
         @children = children
       end
 
-      def visit(value)
+      def visit(value, scope = nil)
         if value.nil?
           value
         else
-          @children.map { |n| n.visit(value) }
+          @children.map { |n| n.visit(value, scope) }
         end
       end
 

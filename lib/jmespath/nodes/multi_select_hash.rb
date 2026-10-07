@@ -7,12 +7,12 @@ module JMESPath
         @kv_pairs = kv_pairs
       end
 
-      def visit(value)
+      def visit(value, scope = nil)
         if value.nil?
           nil
         else
           @kv_pairs.each_with_object({}) do |pair, hash|
-            hash[pair.key] = pair.value.visit(value)
+            hash[pair.key] = pair.value.visit(value, scope)
           end
         end
       end

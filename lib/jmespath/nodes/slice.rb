@@ -10,7 +10,7 @@ module JMESPath
         raise Errors::InvalidValueError, 'slice step cannot be 0' if @step == 0
       end
 
-      def visit(value)
+      def visit(value, _scope = nil)
         if (value = value.respond_to?(:to_str) ? value.to_str : value.respond_to?(:to_ary) ? value.to_ary : nil)
           start, stop, step = adjust_slice(value.size, @start, @stop, @step)
           result = []
@@ -76,7 +76,7 @@ module JMESPath
         super(start, stop, 1)
       end
 
-      def visit(value)
+      def visit(value, _scope = nil)
         if (value = value.respond_to?(:to_str) ? value.to_str : value.respond_to?(:to_ary) ? value.to_ary : nil)
           value[@start, @stop - @start]
         end

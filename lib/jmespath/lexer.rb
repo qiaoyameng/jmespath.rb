@@ -30,6 +30,8 @@ module JMESPath
     T_LITERAL = :literal
     T_EOF = :eof
     T_COMPARATOR = :comparator
+    T_VARIABLE = :variable
+    T_ASSIGN = :assign
 
     STATE_IDENTIFIER = 0
     STATE_NUMBER = 1
@@ -45,6 +47,7 @@ module JMESPath
     STATE_EQ = 11
     STATE_NOT = 12
     STATE_AND = 13
+    STATE_VARIABLE = 14
 
     TRANSLATION_TABLE = {
       '<'  => STATE_LT,
@@ -55,6 +58,7 @@ module JMESPath
       '|'  => STATE_PIPE,
       '&'  => STATE_AND,
       '`'  => STATE_JSON_LITERAL,
+      '$'  => STATE_VARIABLE,
       '"'  => STATE_QUOTED_STRING,
       "'"  => STATE_STRING_LITERAL,
       '-'  => STATE_NUMBER,
@@ -193,6 +197,20 @@ module JMESPath
             buffer.join,
             start
           )
+        when STATE_VARIABLE
+          # consume "$name" variable references
+          start = chars.position
+          chars.next
+          buffer = []
+          while VALID_IDENTIFIERS.include?(chars.current)
+            buffer << chars.current
+            chars.next
+          end
+          if buffer.empty?
+            tokens << Token.new(T_UNKNOWN, '$', start)
+          else
+            tokens << Token.new(T_VARIABLE, buffer.join, start)
+          end
         when STATE_WHITESPACE
           # skip whitespace
           chars.next
@@ -247,7 +265,7 @@ module JMESPath
           tokens << token
         when STATE_EQ
           # consume equals
-          tokens << match_or(chars, '=', '=', T_COMPARATOR, T_UNKNOWN)
+          tokens << match_or(chars, '=', '=', T_COMPARATOR, T_ASSIGN)
         when STATE_AND
           tokens << match_or(chars, '&', '&', T_AND, T_EXPREF)
         when STATE_NOT

@@ -6,8 +6,8 @@ module JMESPath
         @expression = expression
       end
 
-      def visit(value)
-        JMESPath::Util.falsey?(@expression.visit(value))
+      def visit(value, scope = nil)
+        JMESPath::Util.falsey?(@expression.visit(value, scope))
       end
 
       def optimize

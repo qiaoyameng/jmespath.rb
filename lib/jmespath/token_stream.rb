@@ -9,6 +9,7 @@ module JMESPath
       @tokens = tokens
       @token = nil
       @position = -1
+      @variable_scopes = []
       self.next
     end
 
@@ -29,6 +30,34 @@ module JMESPath
 
     def lookahead(count)
       @tokens[@position + count] || Token::NULL_TOKEN
+    end
+
+    # Pushes a new lexical scope for `let` variable bindings.
+    # @api private
+    def push_variable_scope
+      @variable_scopes << {}
+    end
+
+    # Pops the most recent lexical variable scope.
+    # @api private
+    def pop_variable_scope
+      @variable_scopes.pop
+    end
+
+    # Binds a variable name in the current lexical scope.
+    # @api private
+    def bind_variable(name)
+      @variable_scopes.last[name] = true
+    end
+
+    # @return [Boolean] Returns `true` if the given variable name is
+    #   bound in any enclosing lexical scope.
+    # @api private
+    def variable_bound?(name)
+      @variable_scopes.reverse_each do |scope|
+        return true if scope.key?(name)
+      end
+      false
     end
 
     # @api private

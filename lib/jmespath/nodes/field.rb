@@ -8,7 +8,7 @@ module JMESPath
         @key_sym = key.respond_to?(:to_sym) ? key.to_sym : nil
       end
 
-      def visit(value)
+      def visit(value, _scope = nil)
         if value.respond_to?(:to_ary) && @key.is_a?(Integer)
           value.to_ary[@key]
         elsif value.respond_to?(:to_hash)
@@ -46,7 +46,7 @@ module JMESPath
         end
       end
 
-      def visit(obj)
+      def visit(obj, _scope = nil)
         @keys.reduce(obj) do |value, key|
           if value.respond_to?(:to_ary) && key.is_a?(Integer)
             value.to_ary[key]

@@ -17,6 +17,8 @@ module JMESPath
       Lexer::T_CURRENT           => 0,
       Lexer::T_EXPREF            => 0,
       Lexer::T_COLON             => 0,
+      Lexer::T_VARIABLE          => 0,
+      Lexer::T_ASSIGN            => 0,
       Lexer::T_PIPE              => 1,
       Lexer::T_OR                => 2,
       Lexer::T_AND               => 3,

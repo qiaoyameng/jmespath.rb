@@ -100,6 +100,9 @@ module JMESPath
 
     def nud_identifier(stream)
       token = stream.token
+      if token.value == 'let' && stream.lookahead(1).type == Lexer::T_VARIABLE
+        return parse_let(stream)
+      end
       n = stream.next
       if n.type == :lparen
         Nodes::Function::FunctionName.new(token.value)
@@ -155,6 +158,17 @@ module JMESPath
 
     def nud_unknown(stream)
       raise Errors::SyntaxError, "unknown token #{stream.token.value.inspect}"
+    end
+
+    def nud_variable(stream)
+      token = stream.token
+      stream.next
+      unless stream.variable_bound?(token.value)
+        raise Errors::UnboundVariableError,
+              "unbound variable `$#{token.value}` at position " \
+              "#{token.position} in expression `#{stream.expression}`"
+      end
+      Nodes::Variable.new(token.value, token.position)
     end
 
     def led_comparator(stream, left)
@@ -285,6 +299,49 @@ module JMESPath
       stream.next(match: Set.new([:colon]))
       stream.next
       Nodes::MultiSelectHash::KeyValuePair.new(key, expr(stream))
+    end
+
+    # Parses `let $name = expression [, $name = expression ...] in expression`.
+    # Binding expressions are resolved in the scope enclosing the `let`,
+    # so a binding may not reference itself, its siblings, or variables
+    # bound later. Nested `let` expressions may shadow outer bindings.
+    def parse_let(stream)
+      stream.next # consume the `let` identifier
+      stream.push_variable_scope
+      begin
+        bindings = []
+        begin
+          token = stream.token
+          unless token.type == Lexer::T_VARIABLE
+            raise Errors::SyntaxError,
+                  "expected a variable after `let`, got #{token.type}"
+          end
+          if bindings.any? { |(name, _)| name == token.value }
+            raise Errors::SyntaxError,
+                  "duplicate binding for `$#{token.value}` at position " \
+                  "#{token.position} in expression `#{stream.expression}`"
+          end
+          stream.next
+          unless stream.token.type == Lexer::T_ASSIGN
+            raise Errors::SyntaxError,
+                  "expected `=` after `$#{token.value}` in let expression"
+          end
+          stream.next
+          bindings << [token.value, expr(stream, 0)]
+          break unless stream.token.type == Lexer::T_COMMA
+          stream.next
+        end while true
+        unless stream.token.type == Lexer::T_IDENTIFIER && stream.token.value == 'in'
+          raise Errors::SyntaxError,
+                "expected `in` after let bindings, got #{stream.token.type}"
+        end
+        stream.next
+        bindings.each { |(name, _)| stream.bind_variable(name) }
+        body = expr(stream, 0)
+      ensure
+        stream.pop_variable_scope
+      end
+      Nodes::Let.new(bindings, body)
     end
 
     def parse_multi_select_list(stream)

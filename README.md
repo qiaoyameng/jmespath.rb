@@ -43,6 +43,32 @@ JMESPath.search('foo.bar', { abc: "mno" })
 
 **[See the JMESPath specification for a full list of supported search expressions.](http://jmespath.org/specification.html)**
 
+## Let Expressions
+
+As an extension to the JMESPath specification, expressions may bind
+derived values to variables with `let`. The bound expression is
+evaluated once, when the `let` is entered, and the variable can be
+referenced any number of times inside the body.
+
+```ruby
+JMESPath.search('let $threshold = `2` in items[?qty > $threshold].name', {
+  items: [{ qty: 1, name: "one" }, { qty: 3, name: "three" }]
+})
+#=> ["three"]
+```
+
+Multiple bindings may be introduced with commas. Nested `let`
+expressions may shadow outer bindings, while duplicate bindings at the
+same level and references to variables that are not yet bound raise
+errors. Variables live in their own namespace, separate from data
+fields, and expression references (`&expr`) capture the bindings in
+effect where they are declared.
+
+```ruby
+JMESPath.search('let $a = `1`, $b = `2` in [$a, $b]', {})
+#=> [1, 2]
+```
+
 ## Indifferent Access
 
 The examples above show JMESPath expressions used to search over hashes with symbolized keys. You can use search also for hashes with string keys or Struct objects.

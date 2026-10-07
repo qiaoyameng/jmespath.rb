@@ -26,8 +26,8 @@ module JMESPath
         type.new(left, right)
       end
 
-      def visit(value)
-        check(@left.visit(value), @right.visit(value))
+      def visit(value, scope = nil)
+        check(@left.visit(value, scope), @right.visit(value, scope))
       end
 
       def optimize

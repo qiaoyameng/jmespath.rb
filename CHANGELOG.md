@@ -1,6 +1,9 @@
 Unreleased Changes
 ------------------
 
+* Feature - Add `let $name = expression in expression` expressions for
+  binding derived values to lexically scoped variables.
+
 1.6.2 (2022-11-25)
 ------------------
 

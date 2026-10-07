@@ -26,6 +26,7 @@ module JMESPath
     require  'jmespath/nodes/flatten'
     require  'jmespath/nodes/function'
     require  'jmespath/nodes/index'
+    require  'jmespath/nodes/let'
     require  'jmespath/nodes/literal'
     require  'jmespath/nodes/multi_select_hash'
     require  'jmespath/nodes/multi_select_list'
@@ -36,5 +37,6 @@ module JMESPath
     require  'jmespath/nodes/projection'
     require  'jmespath/nodes/projection'
     require  'jmespath/nodes/slice'
+    require  'jmespath/nodes/variable'
   end
 end
