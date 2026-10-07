@@ -222,6 +222,155 @@ module JMESPath
       end
     end
 
+    class LeftJoinFunction < Function
+      include TypeChecker
+
+      FUNCTIONS['left_join'] = self
+
+      NULL_KEY = :__null_join_key
+      COMPOSITE_KEY = :__join_composite_key
+
+      def call(args)
+        return invalid_arity unless args.count.between?(4, 5)
+
+        left, right, left_expression, right_expression = args
+        options = extract_options(args[4])
+        return options unless options.is_a?(Hash)
+
+        unless get_type(left) == ARRAY_TYPE && get_type(right) == ARRAY_TYPE
+          return invalid_type 'function left_join() expects the first two arguments to be arrays'
+        end
+        unless Nodes::Expression === left_expression && Nodes::Expression === right_expression
+          return invalid_type 'function left_join() expects the third and fourth arguments to be expressions'
+        end
+
+        match_null = option_bool(options, 'match_null', 'matchNull', 'null_matches', 'allow_null_keys')
+        return match_null unless match_null.is_a?(Hash)
+
+        limit = option_limit(options)
+        return limit unless limit.is_a?(Hash)
+        limit = limit[:value]
+
+        groups = {}
+        right.to_ary.each do |right_item|
+          key = join_key(right_expression.eval(right_item))
+          next if null_join_key?(key) && !match_null[:value]
+
+          (groups[key] ||= []) << right_item
+        end
+
+        result = []
+        left.to_ary.each do |left_item|
+          key = join_key(left_expression.eval(left_item))
+          matches = null_join_key?(key) && !match_null[:value] ? [] : groups.fetch(key, [])
+
+          if matches.empty?
+            append_join_record(result, left_item, nil, limit)
+          else
+            matches.each do |right_item|
+              append_join_record(result, left_item, right_item, limit)
+            end
+          end
+        end
+        result
+      rescue InvalidJoinKey
+        invalid_type 'function left_join() expects key expressions to return scalar values or arrays of scalar values'
+      rescue EmptyJoinKey
+        maybe_raise Errors::InvalidValueError, 'function left_join() expects composite keys to contain at least one value'
+      rescue JoinLimitExceeded
+        maybe_raise Errors::InvalidValueError, 'function left_join() result exceeds the output limit'
+      end
+
+      private
+
+      def extract_options(value)
+        case value.nil? ? nil : get_type(value)
+        when nil
+          {}
+        when OBJECT_TYPE
+          value.to_hash.each_with_object({}) do |(key, option_value), options|
+            options[key.to_s] = option_value if key.is_a?(Symbol) || key.respond_to?(:to_str)
+          end
+        else
+          invalid_type 'function left_join() expects the fifth argument to be an object'
+        end
+      end
+
+      def option_bool(options, *names)
+        value = names.map { |name| options[name] }.compact.first
+        return { value: false } if value.nil?
+        return { value: value } if value == true || value == false
+
+        invalid_type 'function left_join() expects match_null to be a boolean'
+      end
+
+      def option_limit(options)
+        value = options.values_at('limit', 'max_results', 'max_length').compact.first
+        return { value: nil } if value.nil?
+
+        unless value.is_a?(Numeric) && value >= 0 && value == value.to_i
+          return maybe_raise Errors::InvalidValueError, 'function left_join() expects limit to be a non-negative integer'
+        end
+
+        { value: value.to_i }
+      end
+
+      def join_key(value)
+        case get_type(value)
+        when ARRAY_TYPE
+          values = value.to_ary
+          raise EmptyJoinKey if values.empty?
+
+          key = values.map do |item|
+            type = get_type(item)
+            raise InvalidJoinKey unless scalar_key_type?(type)
+
+            scalar_join_key(item, type)
+          end
+          [COMPOSITE_KEY, key]
+        when NULL_TYPE
+          nil
+        else
+          raise InvalidJoinKey unless scalar_key_type?(get_type(value))
+
+          scalar_join_key(value, get_type(value))
+        end
+      end
+
+      def scalar_key_type?(type)
+        [BOOLEAN_TYPE, NULL_TYPE, NUMBER_TYPE, STRING_TYPE].include?(type)
+      end
+
+      def scalar_join_key(value, type)
+        return NULL_KEY if type == NULL_TYPE
+        return value.to_r if type == NUMBER_TYPE && value.respond_to?(:to_r)
+
+        Util.as_json(value)
+      end
+
+      def null_join_key?(key)
+        key.nil? || (key.is_a?(Array) && key[0] == COMPOSITE_KEY && key[1].include?(NULL_KEY))
+      end
+
+      def append_join_record(result, left_item, right_item, limit)
+        raise JoinLimitExceeded if limit && result.length >= limit
+
+        result << { 'left' => left_item, 'right' => right_item }
+      end
+
+      def invalid_arity
+        maybe_raise Errors::InvalidArityError, 'function left_join() expects four or five arguments'
+      end
+
+      def invalid_type(message)
+        maybe_raise Errors::InvalidTypeError, message
+      end
+
+      class InvalidJoinKey < StandardError; end
+      class EmptyJoinKey < StandardError; end
+      class JoinLimitExceeded < StandardError; end
+    end
+
     class MaxFunction < Function
       include TypeChecker
 
