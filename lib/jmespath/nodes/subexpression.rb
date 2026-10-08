@@ -3,6 +3,9 @@ module JMESPath
   # @api private
   module Nodes
     class Subexpression < Node
+      # @return [Node]
+      attr_reader :left, :right
+
       def initialize(left, right)
         @left = left
         @right = right
@@ -17,8 +20,6 @@ module JMESPath
       end
 
       protected
-
-      attr_reader :left, :right
 
       def flatten
         nodes = [@left, @right]

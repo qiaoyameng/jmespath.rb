@@ -70,6 +70,34 @@ File.open('/path/to/data.json', 'r', encoding:'UTF-8') do |file|
 end
 ```
 
+## Transforming Documents
+
+`JMESPath.transform` selects nodes with a restricted JMESPath expression and replaces each selected value with the return value of a block. It returns a new document and never modifies its input.
+
+```ruby
+JMESPath.transform('items[*].price', data) { |price| price * 2 }
+```
+
+Only expressions that map back to concrete paths in the original document are supported: fields, indices, slices, filters and projections. Expressions that generate new values — functions (including `sort_by`), multi-selects, flatten, literals — are rejected with `JMESPath::Errors::UnsupportedExpressionError` before the document is inspected.
+
+Return `JMESPath::DELETE` from the block to remove the selected node from its parent hash or array.
+
+```ruby
+# delete expired items selected by a filter
+JMESPath.transform('items[?expired]', data) { JMESPath::DELETE }
+```
+
+Multiple rules can be applied in one call. Every target is resolved against the original document before any replacement is applied, so one rule never observes the effect of another. Overlapping rules (duplicate targets, or one target being an ancestor of another) raise `JMESPath::Errors::TransformConflictError`.
+
+```ruby
+JMESPath.transform({
+  'items[?price > `10`].price' => ->(price) { price / 10 },
+  'items[?expired]' => ->(_) { JMESPath::DELETE },
+}, data)
+```
+
+If a block raises, the error is wrapped in `JMESPath::Errors::TransformError` carrying the original `#path` and `#expression`, and the input document is left unchanged. Pass `in_place: true` to mutate the input document instead of transforming a copy.
+
 ## Links of Interest
 
 * [Release Notes](https://github.com/trevorrowe/jmespath.rb/releases)

@@ -3,6 +3,9 @@ module JMESPath
   # @api private
   module Nodes
     class Projection < Node
+      # @return [Node]
+      attr_reader :target, :projection
+
       def initialize(target, projection)
         @target = target
         @projection = projection

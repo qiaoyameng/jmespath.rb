@@ -1,6 +1,15 @@
 Unreleased Changes
 ------------------
 
+* Feature - Add `JMESPath.transform`, which replaces or deletes nodes
+  selected by restricted JMESPath expressions (fields, indices, slices,
+  filters and projections) using block return values. All targets are
+  resolved against the original document before any edit is applied,
+  overlapping targets raise
+  `JMESPath::Errors::TransformConflictError`, and block failures raise
+  `JMESPath::Errors::TransformError` carrying the original path while
+  leaving the input document unchanged.
+
 1.6.2 (2022-11-25)
 ------------------
 

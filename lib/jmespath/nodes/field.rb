@@ -3,6 +3,9 @@ module JMESPath
   # @api private
   module Nodes
     class Field < Node
+      # @return [String, Integer]
+      attr_reader :key
+
       def initialize(key)
         @key = key
         @key_sym = key.respond_to?(:to_sym) ? key.to_sym : nil

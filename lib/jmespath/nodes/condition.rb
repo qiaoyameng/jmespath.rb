@@ -3,6 +3,9 @@ module JMESPath
   # @api private
   module Nodes
     class Condition < Node
+      # @return [Node]
+      attr_reader :test, :child
+
       def initialize(test, child)
         @test = test
         @child = child
